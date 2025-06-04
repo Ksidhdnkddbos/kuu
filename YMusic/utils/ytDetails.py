@@ -61,69 +61,45 @@ async def searchYt(query):
         return None, None, None
 
 import os
-import yt_dlp
 import asyncio
+import yt_dlp
 
 async def download_audio(link, file_name):
     output_path = os.path.join(os.getcwd(), "downloads")
-    os.makedirs(output_path, exist_ok=True)  # أكثر أماناً من الشرط if
-    
+    os.makedirs(output_path, exist_ok=True)
+
     ydl_opts = {
-        # إعدادات التنزيل المثلى
-        'format': 'bestaudio[ext=m4a]',  # اختيار أفضل صيغة صوت مباشرة
+        'format': 'bestaudio/best',  # أفضل جودة صوتية متاحة (بدون تحويل)
         'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
         'ffmpeg_location': '/usr/bin/ffmpeg',
         'cookiefile': cookie_txt_file(),
-        
-        # تحسينات الأداء
-        'concurrent_fragment_downloads': 4,  # تنزيل أجزاء متعددة معاً
-        'http_chunk_size': 1048576,  # 1MB لكل قطعة
-        'retries': 3,  # تقليل عدد المحاولات
-        
-        # إعدادات التحويل
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'm4a',  # الأسرع في التحويل
-        }],
-        
-        'verbose': False,  # إيقاف التفاصيل غير الضرورية
+        'quiet': True,  # إيقاف السجلات غير الضرورية
         'extract_flat': False,
+        'noprogress': True,  # إيقاف شريط التقدم
+        **'keepvideo': False**,  # التأكد من عدم تنزيل الفيديو إذا كان Format مخصصًا للصوت
     }
 
     try:
-        start_time = time.time()
-        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # تنزيل الملف مع عرض التقدم
-            def progress_hook(d):
-                if d['status'] == 'downloading':
-                    print(f"\rDownloaded {d.get('downloaded_bytes',0)} bytes", end='')
-            
-            ydl.add_progress_hook(progress_hook)
-            
             info = await asyncio.get_event_loop().run_in_executor(
-                None, 
-                lambda: ydl.extract_info(link, download=True)
+                None, lambda: ydl.extract_info(link, download=True)
             )
             
-            print(f"\nDownload completed in {time.time()-start_time:.2f} seconds")
+            title = info.get('title', file_name)
+            duration = info.get('duration', 0)
             
-            # الحصول على الملف المنزّل
-            actual_ext = info.get('ext', 'm4a')
-            downloaded_file = os.path.join(output_path, f'{file_name}.{actual_ext}')
+            # البحث عن الملف بأي امتداد لأنه لم يعد هناك تحويل ثابت
+            for ext in ['webm', 'm4a', 'mp3', 'opus', 'ogg']:  # التنسيقات الصوتية الشائعة
+                path = os.path.join(output_path, f'{file_name}.{ext}')
+                if os.path.exists(path):
+                    return path, title, duration
             
-            if not os.path.exists(downloaded_file):
-                raise FileNotFoundError("Downloaded file not found")
-            
-            return downloaded_file, info.get('title', file_name), info.get('duration', 0)
+            raise Exception("No audio file downloaded")
             
     except Exception as e:
-        print(f"\nError in download_audio: {str(e)}")
-        # تنظيف الملفات غير المكتملة
-        for f in glob.glob(os.path.join(output_path, f'{file_name}.*')):
-            try: os.remove(f)
-            except: pass
+        print(f"Error in download_audio: {str(e)}")
         return None, None, None
+        
         
 async def download_video(link, file_name):
     output_path = os.path.join(os.getcwd(), "downloads")
