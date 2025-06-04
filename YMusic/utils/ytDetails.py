@@ -69,14 +69,24 @@ async def download_audio(link, file_name):
     os.makedirs(output_path, exist_ok=True)
 
     ydl_opts = {
-        'format': 'bestaudio/best',  # أفضل جودة صوتية متاحة (بدون تحويل)
-        'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
-        'ffmpeg_location': '/usr/bin/ffmpeg',
-        'cookiefile': cookie_txt_file(),
-        'quiet': True,  # إيقاف السجلات غير الضرورية
-        'extract_flat': False,
-        'noprogress': True,  # إيقاف شريط التقدم
-        'keepvideo': False,  # التأكد من عدم تنزيل الفيديو إذا كان Format مخصصًا للصوت
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
+        "outtmpl": os.path.join(output_path, f"{file_name}.%(ext)s"),
+        "ffmpeg_location": "/usr/bin/ffmpeg",
+        "cookiefile": cookie_txt_file(),
+        
+        # إعدادات السرعة
+        "socket_timeout": 5,
+        "http_chunk_size": 5242880,
+        "noplaylist": True,
+        "extract_flat": True,
+        "fragment_retries": 2,
+        "retries": 2,
+        
+        # إعدادات التخفيض
+        "quiet": True,
+        "no_warnings": True,
+        "geo_bypass": True,
+        "noprogress": True,
     }
 
     try:
@@ -85,20 +95,19 @@ async def download_audio(link, file_name):
                 None, lambda: ydl.extract_info(link, download=True)
             )
             
-            title = info.get('title', file_name)
-            duration = info.get('duration', 0)
+            # الحصول على المسار الفعلي للملف من معلومات yt-dlp
+            actual_ext = info.get('ext', 'm4a')
+            downloaded_file = os.path.join(output_path, f"{file_name}.{actual_ext}")
             
-            # البحث عن الملف بأي امتداد لأنه لم يعد هناك تحويل ثابت
-            for ext in ['webm', 'm4a', 'mp3', 'opus', 'ogg']:  # التنسيقات الصوتية الشائعة
-                path = os.path.join(output_path, f'{file_name}.{ext}')
-                if os.path.exists(path):
-                    return path, title, duration
-            
-            raise Exception("No audio file downloaded")
+            if not os.path.exists(downloaded_file):
+                raise Exception("No audio file downloaded")
+
+            return downloaded_file, info.get('title', file_name), info.get('duration', 0)
             
     except Exception as e:
         print(f"Error in download_audio: {str(e)}")
         return None, None, None
+        
         
         
 async def download_video(link, file_name):
