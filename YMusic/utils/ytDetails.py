@@ -81,6 +81,7 @@ async def download_audio(link, file_name):
         "extract_flat": True,
         "fragment_retries": 2,
         "retries": 2,
+        "keepvideo": False,
         
         # إعدادات التخفيض
         "quiet": True,
