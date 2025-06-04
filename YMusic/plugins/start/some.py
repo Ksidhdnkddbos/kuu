@@ -34,9 +34,8 @@ async def handle_source_command(_, message):
         "- أهلا عزيزي في سورس فريدوم\n"
         "⎯ ⎯ ⎯ ⎯\n"
         "- معلومات السورس هي:\n"
-        "- قناة السورس: [Click](https://t.me/xl444)\n"
-        "- قناة التحديثات: [Click](https://t.me/k3hbot)\n"
-        "- مطور السورس: [Click](https://t.me/RR8R9)\n\n"
+        "- قناة السورس: [Click](https://t.me/aqhvv)\n"
+        "- مطور السورس: [Click](https://t.me/lx5x5)\n\n"
         "- تم اصدار هذا السورس بموجب القانون 📍."
     )
     await message.reply_text(source_info, disable_web_page_preview=True)  
