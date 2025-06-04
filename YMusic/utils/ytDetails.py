@@ -73,33 +73,38 @@ async def download_audio(link, file_name):
         'format': 'bestaudio/best',
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
+            'preferredcodec': 'm4a',  # جرب m4a إذا فشل mp3
             'preferredquality': '192',
         }],
         'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
         'ffmpeg_location': '/usr/bin/ffmpeg',
-        'quiet': True,
-        'extract_flat': True,
-        'cookiefile': 'cookies.txt',  # استخدام ملف cookies.txt
+        'cookiefile': cookie_txt_file(),  # استخدام الدالة الديناميكية
+        'verbose': True,  # لرؤية التفاصيل في السجلات
+        'extract_flat': False,
     }
 
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([link]))
-
-        output_file = os.path.join(output_path, f'{file_name}.mp3')
-        if not os.path.exists(output_file):
-            raise Exception(f"File not downloaded successfully: {output_file}")
-        
-        # الحصول على معلومات الفيديو (العنوان والمدة)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
+            info = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: ydl.extract_info(link, download=True)
+            )
             title = info.get('title', file_name)
-            duration = info.get('duration', 0)  # المدة بالثواني
+            duration = info.get('duration', 0)
 
-        return output_file, title, duration
+            # البحث عن الملف المنزّل (قد يكون بـ امتداد مختلف)
+            downloaded_file = None
+            for ext in ['m4a', 'mp3', 'webm', 'opus']:
+                path = os.path.join(output_path, f'{file_name}.{ext}')
+                if os.path.exists(path):
+                    downloaded_file = path
+                    break
+
+            if not downloaded_file:
+                raise Exception("No audio file downloaded")
+
+            return downloaded_file, title, duration
     except Exception as e:
-        print(f"Error in download_audio: {e}")
+        print(f"Error in download_audio: {str(e)}")
         return None, None, None
 
 async def download_video(link, file_name):
