@@ -1,10 +1,9 @@
-import os
-import glob
-import random
-import json
-import asyncio
-import yt_dlp
+from youtubesearchpython import VideosSearch, PlaylistsSearch
 from urllib.parse import urlparse, parse_qs
+import yt_dlp
+import config
+import os
+import asyncio
 
 def cookie_txt_file():
     folder_path = f"{os.getcwd()}/cookies"
@@ -34,35 +33,22 @@ async def check_file_size(link):
         return json.loads(stdout.decode())
 
 async def searchYt(query):
-    ydl_opts = {
-        'quiet': True,
-        'cookiefile': cookie_txt_file(),
-        'noplaylist': True,
-        'default_search': 'ytsearch1',  # Use yt-dlp's built-in search
-        'dump_single_json': True,
-    }
-
     try:
-        # Execute yt-dlp search command
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(query, download=False))
-        
-        if not result or 'entries' not in result or len(result['entries']) == 0:
+        videosSearch = VideosSearch(query, limit=1)
+        result = videosSearch.result()
+        if not result["result"]:
             return None, None, None
-
-        video = result['entries'][0]
-        title = video.get('title')
-        duration_seconds = video.get('duration', 0)
-        link = video.get('webpage_url')
-
+        title = result["result"][0]["title"]
+        duration = result["result"][0]["duration"]
+        link = result["result"][0]["link"]
+        
+        duration_parts = duration.split(':')
+        duration_seconds = sum(int(x) * 60 ** i for i, x in enumerate(reversed(duration_parts)))
+        
         return title, duration_seconds, link
     except Exception as e:
         print(f"Error in searchYt: {e}")
         return None, None, None
-
-import os
-import yt_dlp
-import asyncio
 
 async def download_audio(link, file_name):
     output_path = os.path.join(os.getcwd(), "downloads")
@@ -74,32 +60,35 @@ async def download_audio(link, file_name):
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
-            'preferredquality': '192',
+            'preferredquality': '320',
         }],
         'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
-        'ffmpeg_location': '/usr/bin/ffmpeg',
-        'quiet': True,
-        'extract_flat': True,
-        'cookiefile': 'cookies.txt',  # استخدام ملف cookies.txt
+        'cookiefile': config.COOK_PATH,
+        'ffmpeg_location': '/usr/bin/ffmpeg', 
+        'verbose': False, 
     }
 
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([link]))
-
-        output_file = os.path.join(output_path, f'{file_name}.mp3')
-        if not os.path.exists(output_file):
-            raise Exception(f"File not downloaded successfully: {output_file}")
-        
-        # الحصول على معلومات الفيديو (العنوان والمدة)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
-            title = info.get('title', file_name)
-            duration = info.get('duration', 0)  # المدة بالثواني
-
+            duration = info.get('duration')
+            title = info.get('title')
+            
+            if asyncio.current_task().cancelled():
+                print("Download cancelled")
+                return None, None, None
+            
+            ydl.download([link])
+        
+        output_file = os.path.join(output_path, f'{file_name}.mp3')
+        if not os.path.exists(output_file):
+            raise Exception(f"File tidak berhasil diunduh: {output_file}")
+        
         return output_file, title, duration
     except Exception as e:
         print(f"Error in download_audio: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None, None
 
 async def download_video(link, file_name):
@@ -110,24 +99,44 @@ async def download_video(link, file_name):
     ydl_opts = {
         'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
-        'cookiefile': cookie_txt_file(),  
+        'cookiefile': config.COOK_PATH,
         'ffmpeg_location': '/usr/bin/ffmpeg',
-        'buffer-size': '16M',
-        'quiet': True,
+        'verbose': False,
     }
 
     try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([link]))
-
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(link, download=False)
+            duration = info.get('duration')
+            title = info.get('title')
+            
+            if asyncio.current_task().cancelled():
+                print("Download cancelled")
+                return None, None, None
+            
+            ydl.download([link])
+        
         output_file = os.path.join(output_path, f'{file_name}.mp4')
         if not os.path.exists(output_file):
-            raise Exception(f"File not downloaded successfully: {output_file}")
+            raise Exception(f"File tidak berhasil diunduh: {output_file}")
         
-        return output_file, file_name, None
+        return output_file, title, duration
     except Exception as e:
         print(f"Error in download_video: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None, None
+
+def searchPlaylist(query):
+    query = str(query)
+    playlistResult = PlaylistsSearch(query, limit=1)
+    Result = playlistResult.result()
+    if not Result["result"] == []:
+        title = Result["result"][0]["title"]
+        videoCount = Result["result"][0]["videoCount"]
+        link = Result["result"][0]["link"]
+        return title, videoCount, link
+    return None, None, None
 
 def extract_playlist_id(url):
     parsed_url = urlparse(url)
