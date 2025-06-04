@@ -42,10 +42,21 @@ async def delete_file(file_path):
 async def send_song_info(chat_id, song, is_loop=False):
     original_query = song.get('query', song['title'])
     title = song['title']
-    duration = song['duration']
+    duration = song['duration']  # تأكد أن هذه القيمة بالثواني
     link = song['link']
     requester_name = song['requester_name']
     requester_id = song['requester_id']
     
-    info_text = f"-› تم التشـغيل بنجـاح .\n\nS𝑜𝑛𝑔N𝑎𝑚𝑒:- [{title[:19]}]({link})\nD𝑢𝑟𝑎𝑡𝑖𝑜𝑛:- {duration}\nR𝑒𝑞𝑢𝑒𝑠𝑡𝑒𝑑 𝑏𝑦:- {requester_name}"
+    # تحويل المدة من ثواني إلى دقائق:ثواني
+    minutes, seconds = divmod(int(duration), 60)
+    formatted_duration = f"{minutes}:{seconds:02d}"
+    
+    # تنسيق الرسالة بشكل أفضل
+    info_text = f"""
+🎵 | تم التشغيل بنجاح
+
+⦿ اسم الأغنية: [{title[:25]}]({link})
+⦿ المدة: {formatted_duration}
+⦿ طلب من: [{requester_name}](tg://user?id={requester_id})
+"""
     await app.send_message(chat_id, info_text, disable_web_page_preview=True)
