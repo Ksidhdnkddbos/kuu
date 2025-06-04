@@ -66,45 +66,59 @@ import yt_dlp
 
 async def download_audio(link, file_name):
     output_path = os.path.join(os.getcwd(), "downloads")
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    os.makedirs(output_path, exist_ok=True)
 
     ydl_opts = {
+        # إعدادات التنسيق الأساسية
         'format': 'bestaudio/best',
+        
+        # إعدادات postprocessor لتحويل إلى MP3
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
             'preferredquality': '320',
         }],
+        
+        # إعدادات المسار
         'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
-        'cookiefile': config.COOK_PATH,
-        'ffmpeg_location': '/usr/bin/ffmpeg', 
-        'verbose': False, 
+        
+        # إعدادات ffmpeg
+        'ffmpeg_location': '/usr/bin/ffmpeg',
+        
+        # إعدادات الأداء
+        'socket_timeout': 5,
+        'http_chunk_size': 5242880,
+        'retries': 2,
+        'fragment_retries': 2,
+        
+        # إعدادات التحكم
+        'noplaylist': True,
+        'extract_flat': True,
+        'geo_bypass': True,
+        
+        # إعدادات الإخراج
+        'quiet': True,
+        'no_warnings': True,
+        'noprogress': True,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
-            duration = info.get('duration')
-            title = info.get('title')
+            info = await asyncio.get_event_loop().run_in_executor(
+                None, lambda: ydl.extract_info(link, download=True)
+            )
             
-            if asyncio.current_task().cancelled():
-                print("Download cancelled")
-                return None, None, None
+            # سيكون الملف الناتج بصيغة MP3 بسبب postprocessor
+            downloaded_file = os.path.join(output_path, f"{file_name}.mp3")
             
-            ydl.download([link])
-        
-        output_file = os.path.join(output_path, f'{file_name}.mp3')
-        if not os.path.exists(output_file):
-            raise Exception(f"File tidak berhasil diunduh: {output_file}")
-        
-        return output_file, title, duration
+            if not os.path.exists(downloaded_file):
+                raise Exception("Failed to download audio file")
+
+            return downloaded_file, info.get('title', file_name), info.get('duration', 0)
+            
     except Exception as e:
-        print(f"Error in download_audio: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error in download_audio: {str(e)}")
         return None, None, None
-        
         
         
 async def download_video(link, file_name):
