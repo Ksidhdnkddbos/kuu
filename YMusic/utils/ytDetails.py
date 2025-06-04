@@ -66,47 +66,43 @@ import yt_dlp
 
 async def download_audio(link, file_name):
     output_path = os.path.join(os.getcwd(), "downloads")
-    os.makedirs(output_path, exist_ok=True)
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
 
     ydl_opts = {
-        "format": "bestaudio[ext=m4a]/bestaudio/best",
-        "outtmpl": os.path.join(output_path, f"{file_name}.%(ext)s"),
-        "ffmpeg_location": "/usr/bin/ffmpeg",
-        "cookiefile": cookie_txt_file(),
-        
-        # إعدادات السرعة
-        "socket_timeout": 5,
-        "http_chunk_size": 5242880,
-        "noplaylist": True,
-        "extract_flat": True,
-        "fragment_retries": 2,
-        "retries": 2,
-        "keepvideo": False,
-        
-        # إعدادات التخفيض
-        "quiet": True,
-        "no_warnings": True,
-        "geo_bypass": True,
-        "noprogress": True,
+        'format': 'bestaudio/best',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '320',
+        }],
+        'outtmpl': os.path.join(output_path, f'{file_name}.%(ext)s'),
+        'cookiefile': config.COOK_PATH,
+        'ffmpeg_location': '/usr/bin/ffmpeg', 
+        'verbose': False, 
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = await asyncio.get_event_loop().run_in_executor(
-                None, lambda: ydl.extract_info(link, download=True)
-            )
+            info = ydl.extract_info(link, download=False)
+            duration = info.get('duration')
+            title = info.get('title')
             
-            # الحصول على المسار الفعلي للملف من معلومات yt-dlp
-            actual_ext = info.get('ext', 'm4a')
-            downloaded_file = os.path.join(output_path, f"{file_name}.{actual_ext}")
+            if asyncio.current_task().cancelled():
+                print("Download cancelled")
+                return None, None, None
             
-            if not os.path.exists(downloaded_file):
-                raise Exception("No audio file downloaded")
-
-            return downloaded_file, info.get('title', file_name), info.get('duration', 0)
-            
+            ydl.download([link])
+        
+        output_file = os.path.join(output_path, f'{file_name}.mp3')
+        if not os.path.exists(output_file):
+            raise Exception(f"File tidak berhasil diunduh: {output_file}")
+        
+        return output_file, title, duration
     except Exception as e:
-        print(f"Error in download_audio: {str(e)}")
+        print(f"Error in download_audio: {e}")
+        import traceback
+        traceback.print_exc()
         return None, None, None
         
         
