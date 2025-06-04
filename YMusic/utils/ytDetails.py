@@ -76,7 +76,7 @@ async def download_audio(link, file_name):
         'quiet': True,  # إيقاف السجلات غير الضرورية
         'extract_flat': False,
         'noprogress': True,  # إيقاف شريط التقدم
-        **'keepvideo': False**,  # التأكد من عدم تنزيل الفيديو إذا كان Format مخصصًا للصوت
+        'keepvideo': False,  # التأكد من عدم تنزيل الفيديو إذا كان Format مخصصًا للصوت
     }
 
     try:
