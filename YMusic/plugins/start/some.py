@@ -31,7 +31,7 @@ async def handle_bank_command(_, message):
 @app.on_message(command(["سورس", "السورس","مطور السورس","المبرمج"]))
 async def handle_source_command(_, message):
     source_info = (
-        "- أهلا عزيزي في سورس فريدوم\n"
+        "- أهلا عزيزي في سورس آراس\n"
         "⎯ ⎯ ⎯ ⎯\n"
         "- معلومات السورس هي:\n"
         "- قناة السورس: [Click](https://t.me/aqhvv)\n"
