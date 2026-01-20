@@ -14,21 +14,22 @@ import os
 
 # متغير لمنع الطلبات المتزامنة
 current_requests = {}
+first_request_flag = True  # لبدء التنظيف عند أول طلب
 
 async def process_audio_fast(title, duration, audio_file, link, 
                            requester_name, requester_id, chat_id, m):
-    """معالجة وتشغيل فوري بدون global variables"""
+    """معالجة وتشغيل فوري"""
     if duration is None:
         duration = 0
     
-    # التحقق من المدة (سريع)
+    # التحقق من المدة
     if duration > 0 and duration > config.MAX_DURATION_MINUTES * 60:
         await m.edit("⦗ المدة طويلة جداً ⦘")
         if audio_file and os.path.exists(audio_file):
             await delete_file(audio_file)
         return
         
-    # التحقق من قائمة الانتظار (سريع)
+    # التحقق من قائمة الانتظار
     queue_length = get_queue_length(chat_id)
     if queue_length >= MAX_QUEUE_SIZE:
         await m.edit("⦗ قائمة الانتظار ممتلئة ⦘")
@@ -47,7 +48,7 @@ async def process_audio_fast(title, duration, audio_file, link,
         if not Status:
             await m.edit(Text)
             if chat_id in QUEUE and QUEUE[chat_id]:
-                QUEUE[chat_id].pop(0)  # إصلاح: pop بدل popleft
+                QUEUE[chat_id].pop(0)
             return
         
         await start_play_time(chat_id)
@@ -66,14 +67,14 @@ async def process_audio_fast(title, duration, audio_file, link,
         )
 
 async def ultra_fast_bot_check(query: str, bot_username: str, is_w60y: bool = False):
-    """فحص فوري كل 0.3 ثانية - أقصى سرعة"""
+    """فحص فوري كل 0.3 ثانية"""
     try:
         start_time = time.time()
         
         # إرسال الطلب
         if is_w60y:
             await app.send_message(bot_username, f"يوت {query}")
-            # انضمام سريع للقناة
+            # انضمام للقناة
             try:
                 await app.join_chat("@B_a_r")
             except:
@@ -81,25 +82,23 @@ async def ultra_fast_bot_check(query: str, bot_username: str, is_w60y: bool = Fa
         else:
             await app.send_message(bot_username, query)
         
-        # المراقبة الفورية كل 0.3 ثانية
+        # المراقبة الفورية
         max_checks = 20  # 20 فحص × 0.3 = 6 ثواني
         last_msg_id = 0
         
         for check_num in range(max_checks):
-            # الحصول على آخر رسالة فقط (أسرع طريقة)
             try:
                 async for msg in app.get_chat_history(bot_username, limit=1):
-                    # التحقق إذا كانت الرسالة جديدة ولها مقطع صوتي
                     if msg.id > last_msg_id and (msg.audio or msg.voice):
                         elapsed = time.time() - start_time
-                        print(f"⚡ {bot_username} رد بعد {elapsed:.1f} ثانية (فحص #{check_num})")
+                        print(f"⚡ {bot_username} رد بعد {elapsed:.1f} ثانية")
                         
                         last_msg_id = msg.id
                         
                         # تحميل فوري
                         audio_file = await msg.download()
                         
-                        # معلومات سريعة
+                        # معلومات
                         if msg.audio:
                             title = msg.audio.title or query
                             duration = msg.audio.duration
@@ -109,12 +108,10 @@ async def ultra_fast_bot_check(query: str, bot_username: str, is_w60y: bool = Fa
                         
                         return audio_file, title, duration
             except Exception as e:
-                print(f"⚠️ خطأ في فحص {bot_username}: {e}")
+                print(f"⚠️ خطأ في الفحص: {e}")
             
-            # انتظار 0.3 ثانية فقط
             await asyncio.sleep(0.3)
         
-        print(f"⏰ {bot_username} لم يرد خلال {max_checks * 0.3:.1f} ثانية")
         return None, None, None
         
     except Exception as e:
@@ -122,16 +119,15 @@ async def ultra_fast_bot_check(query: str, bot_username: str, is_w60y: bool = Fa
         return None, None, None
 
 async def try_multiple_bots_ultra_fast(query: str):
-    """محاولة مع عدة بوتات بأقصى سرعة"""
+    """محاولة مع عدة بوتات"""
     bots_to_try = [
-        ("@W60yBot", True),   # (بوت, هل يحتاج "يوت"؟)
+        ("@W60yBot", True),
         ("@BaarxXxbot", False),
         ("@vid", False),
-        ("@musicder_bot", False),
     ]
     
     for bot_username, needs_yout in bots_to_try:
-        print(f"🚀 محاولة فورية مع {bot_username}")
+        print(f"🚀 محاولة مع {bot_username}")
         
         audio_file, title, duration = await ultra_fast_bot_check(
             query, bot_username, needs_yout
@@ -143,27 +139,45 @@ async def try_multiple_bots_ultra_fast(query: str):
     
     return None, None, None
 
-@app.on_message(command(["فوري", "شغل", "تشغيل", "play", "شغلنا"]))
+async def cleanup_old_requests():
+    """تنظيف الطلبات القديمة"""
+    while True:
+        await asyncio.sleep(60)  # كل دقيقة
+        current_time = time.time()
+        old_requests = [
+            chat_id for chat_id, req_time in current_requests.items()
+            if current_time - req_time > 30
+        ]
+        for chat_id in old_requests:
+            del current_requests[chat_id]
+        if old_requests:
+            print(f"🧹 تم تنظيف {len(old_requests)} طلب قديم")
+
+@app.on_message(command(["فوري", "شغل", "تشغيل", "play", "شغلنا", "GG"]))
 async def ultra_fast_play(_, message: Message):
+    global first_request_flag
+    
+    # بدء التنظيف عند أول طلب
+    if first_request_flag:
+        asyncio.create_task(cleanup_old_requests())
+        first_request_flag = False
+    
     chat_id = message.chat.id
     
-    # منع طلبات متزامنة لنفس الشات
+    # منع طلبات متزامنة
     if chat_id in current_requests and time.time() - current_requests[chat_id] < 5:
-        await message.reply("⏳ جارٍ معالجة طلب سابق، انتظر قليلاً...")
+        await message.reply("⏳ جارٍ معالجة طلب سابق...")
         return
     
-    # وضع علامة على الطلب الحالي
     current_requests[chat_id] = time.time()
     
-    # الحالة 1: رد على مقطع صوتي (فوري)
+    # الحالة 1: رد على مقطع
     if message.reply_to_message and (message.reply_to_message.audio or message.reply_to_message.voice):
         m = await message.reply_text("⚡ جاري التشغيل...")
         
         try:
-            # تحميل فوري مباشر
             audio_file = await message.reply_to_message.download()
             
-            # استخراج معلومات سريعة
             if message.reply_to_message.audio:
                 title = message.reply_to_message.audio.title or "مقطع صوتي"
                 duration = message.reply_to_message.audio.duration
@@ -173,7 +187,6 @@ async def ultra_fast_play(_, message: Message):
             
             link = message.reply_to_message.link
             
-            # معالجة سريعة
             await process_audio_fast(
                 title, duration, audio_file, link,
                 message.from_user.first_name if message.from_user else "مستخدم",
@@ -185,7 +198,6 @@ async def ultra_fast_play(_, message: Message):
             await m.edit(f"❌ خطأ: {str(e)}")
         
         finally:
-            # إزالة علامة الطلب
             if chat_id in current_requests:
                 del current_requests[chat_id]
         
@@ -197,14 +209,12 @@ async def ultra_fast_play(_, message: Message):
         m = await message.reply_text(f"⚡ فوري: {query}")
         
         try:
-            # محاولة فورية مع جميع البوتات
             audio_file, title, duration = await try_multiple_bots_ultra_fast(query)
             
             if not audio_file:
                 await m.edit("❌ لم أجد الأغنية بسرعة")
                 return
             
-            # معالجة سريعة
             link = f"طلب: {query}"
             
             await process_audio_fast(
@@ -219,49 +229,16 @@ async def ultra_fast_play(_, message: Message):
             
         except Exception as e:
             await m.edit(f"❌ خطأ: {str(e)}")
-            print(f"خطأ في التشغيل الفوري: {e}")
+            print(f"خطأ: {e}")
         
         finally:
-            # إزالة علامة الطلب
             if chat_id in current_requests:
                 del current_requests[chat_id]
     
     else:
-        await message.reply_text("⚡ اكتب اسم الأغنية بعد الأمر")
+        await message.reply_text("⚡ اكتب اسم الأغنية")
         if chat_id in current_requests:
             del current_requests[chat_id]
-
-# وظيفة تنظيف الطلبات القديمة (اختياري)
-async def cleanup_old_requests():
-    """تنظيف الطلبات القديمة كل دقيقة"""
-    while True:
-        await asyncio.sleep(60)
-        current_time = time.time()
-        old_requests = [
-            chat_id for chat_id, req_time in current_requests.items()
-            if current_time - req_time > 30  # أكثر من 30 ثانية
-        ]
-        for chat_id in old_requests:
-            del current_requests[chat_id]
-
-# بدء التنظيف عند تشغيل البوت
-@app.on_startup()
-async def startup():
-    asyncio.create_task(cleanup_old_requests())
-
-# باقي الأوامر (تعديلها بنفس المنطق)
-@app.on_message(command(["ايقاف", "stop"]))
-async def stop_command(_, message: Message):
-    chat_id = message.chat.id
-    Text = await userbot.stop(chat_id)
-    
-    # تنظيف
-    if chat_id in QUEUE:
-        del QUEUE[chat_id]
-    if chat_id in current_requests:
-        del current_requests[chat_id]
-    
-    await message.reply_text(Text)
         
 @app.on_message(command(["قائمة التشغيل", "الطابور", "قائمة الانتضار", "القائمة"]))
 async def _playlist(_, message):
