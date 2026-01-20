@@ -80,54 +80,52 @@ async def _aPlay(_, message: Message):
             await m.edit(f"<code>Error: {e}</code>")
 
 async def get_audio_response_from_bot(query: str):
-    """الحصول على audio_response من البوتات"""
-    # قائمة البوتات للمحاولة
-    bots_to_try = ["@W60yBot", "@BaarxXxbot"]
-    
-    for bot_username in bots_to_try:
+    """التنزيل من البوت @W60yBot"""
+    try:
+        print(f"🔍 محاولة مع @W60yBot للبحث عن: {query}")
+        
+        # 1. الانضمام للقناة أولاً
         try:
-            print(f"🔄 محاولة مع {bot_username} للبحث عن: {query}")
-            
-            # الانضمام للقناة إذا كان @W60yBot
-            if bot_username == "@W60yBot":
-                try:
-                    await app.join_chat("@B_a_r")
-                    await asyncio.sleep(0.5)
-                except:
-                    pass
-            
-            # محادثة مع البوت
-            async with app.conversation(bot_username, timeout=25) as conv:
-                # إرسال الأمر المناسب
-                if bot_username == "@W60yBot":
-                    await conv.send_message(f"يوت {query}")
-                else:
-                    await conv.send_message(query)
+            await app.join_chat("@B_a_r")
+            await asyncio.sleep(1)
+        except:
+            pass
+        
+        # 2. إرسال رسالة للبوت مباشرة
+        await app.send_message("@W60yBot", f"يوت {query}")
+        
+        # 3. الانتظار قليلاً
+        await asyncio.sleep(3)
+        
+        # 4. الحصول على آخر رسائل البوت
+        messages = []
+        async for message in app.get_chat_history("@W60yBot", limit=10):
+            if message.from_user and message.from_user.username == "W60yBot":
+                messages.append(message)
+        
+        # 5. البحث عن المقطع الصوتي
+        for msg in messages:
+            if msg.audio or msg.voice:
+                print(f"✅ وجدت مقطع صوتي: {msg.id}")
                 
-                # انتظار الرد الأول
-                try:
-                    response = await asyncio.wait_for(conv.get_response(), timeout=2)
-                    
-                    # إذا كان الرد نصياً، ننتظر رداً آخر
-                    if response.text:
-                        try:
-                            audio_response = await asyncio.wait_for(conv.get_response(), timeout=10)
-                            if audio_response.audio or audio_response.voice:
-                                return audio_response
-                        except TimeoutError:
-                            continue
-                    # إذا كان الرد صوتياً مباشرة
-                    elif response.audio or response.voice:
-                        return response
-                        
-                except TimeoutError:
-                    continue
-                    
-        except Exception as e:
-            print(f"❌ خطأ مع {bot_username}: {e}")
-            continue
-    
-    return None
+                # تحميل المقطع
+                audio_file = await msg.download()
+                
+                # استخراج المعلومات
+                if msg.audio:
+                    title = msg.audio.title or query
+                    duration = msg.audio.duration
+                else:
+                    title = query
+                    duration = msg.voice.duration
+                
+                return audio_file, title, duration
+        
+        return None, None, None
+        
+    except Exception as e:
+        print(f"❌ خطأ في download_from_W60yBot: {str(e)}")
+        return None, None, None
 
 async def process_audio(title, duration, audio_file, link):
     """⭐ نفس دالة المعالجة الأصلية بالضبط!"""
