@@ -1,6 +1,6 @@
+
 from YMusic import app
 from YMusic.core import userbot
-from YMusic.utils.ytDetails import searchYt, extract_video_id, download_audio, download_video
 from YMusic.utils.queue import add_to_queue, get_queue_length, is_queue_empty, get_queue, MAX_QUEUE_SIZE, get_current_song, QUEUE
 from YMusic.utils.utils import delete_file, send_song_info
 from YMusic.utils.formaters import get_readable_time, format_time
@@ -9,21 +9,171 @@ from YMusic.misc import SUDOERS
 from YMusic.filters import command
 from pyrogram import filters
 from pyrogram.types import Message
-from config import DEV_CHANNEL
-from collections import defaultdict
 import time
 import config
 import asyncio
+import os
+
+# متغيرات عامة لاستخدامها في دالة process_audio
+global_m = None
+global_chat_id = None
+global_requester_id = None
+global_requester_name = None
+
+async def process_audio(title, duration, audio_file, link):
+    """معالجة وتشغيل المقطع الصوتي"""
+    global global_m, global_chat_id, global_requester_id, global_requester_name
+    
+    if duration is None:
+        duration = 0
+    
+    # التحقق من المدة
+    if duration > 0 and duration > config.MAX_DURATION_MINUTES * 60:
+        await global_m.edit(f"⦗ المدة طويلة جداً ⦘")
+        if audio_file and os.path.exists(audio_file):
+            await delete_file(audio_file)
+        return
+        
+    # التحقق من قائمة الانتظار
+    queue_length = get_queue_length(global_chat_id)
+    if queue_length >= MAX_QUEUE_SIZE:
+        await global_m.edit(f"⦗ قائمة الانتظار ممتلئة ⦘")
+        if audio_file and os.path.exists(audio_file):
+            await delete_file(audio_file)
+        return
+
+    # إضافة للقائمة
+    queue_num = add_to_queue(global_chat_id, title, duration, audio_file, link, 
+                           global_requester_name, global_requester_id, False)
+    
+    if queue_num == 1:
+        # تشغيل الملف
+        Status, Text = await userbot.playAudio(global_chat_id, audio_file)
+
+        if not Status:
+            await global_m.edit(Text)
+            if global_chat_id in QUEUE and QUEUE[global_chat_id]:
+                QUEUE[global_chat_id].popleft()
+            return
+        
+        await start_play_time(global_chat_id)
+        await send_song_info(global_chat_id, {
+            'title': title,
+            'duration': duration,
+            'link': link,
+            'requester_name': global_requester_name,
+            'requester_id': global_requester_id
+        })
+        await global_m.delete()
+    else:
+        await global_m.edit(
+            f"- بالرقم التالي #{queue_num} \n\n"
+            f"- تم اضافتها الى قائمة الانتظار \n"
+            f"- بطلب من : [{global_requester_name}](tg://user?id={global_requester_id})"
+        )
+
+async def get_audio_response_from_bot(query: str):
+    """التنزيل من البوت @W60yBot"""
+    try:
+        print(f"🔍 محاولة مع @W60yBot للبحث عن: {query}")
+        
+        # 1. الانضمام للقناة أولاً
+        try:
+            await app.join_chat("@B_a_r")
+            await asyncio.sleep(1)
+        except:
+            pass
+        
+        # 2. إرسال رسالة للبوت مباشرة
+        await app.send_message("@W60yBot", f"يوت {query}")
+        
+        # 3. الانتظار قليلاً للبوت ليرسل المقطع
+        await asyncio.sleep(5)
+        
+        # 4. الحصول على آخر رسائل البوت
+        messages = []
+        async for message in app.get_chat_history("@W60yBot", limit=15):
+            if message.from_user and message.from_user.username == "W60yBot":
+                messages.append(message)
+                if len(messages) >= 5:  # نأخذ آخر 5 رسائل فقط
+                    break
+        
+        # 5. البحث عن المقطع الصوتي (الأحدث أولاً)
+        for msg in messages:
+            if msg.audio or msg.voice:
+                print(f"✅ وجدت مقطع صوتي: {msg.id}")
+                
+                # تحميل المقطع
+                audio_file = await msg.download()
+                
+                # استخراج المعلومات
+                if msg.audio:
+                    title = msg.audio.title or query
+                    duration = msg.audio.duration
+                else:
+                    title = query
+                    duration = msg.voice.duration
+                
+                return audio_file, title, duration
+        
+        return None, None, None
+        
+    except Exception as e:
+        print(f"❌ خطأ في get_audio_response_from_bot: {str(e)}")
+        return None, None, None
+
+async def try_baar_bot(query: str):
+    """محاولة مع البوت الثاني @BaarxXxbot"""
+    try:
+        print(f"🔍 محاولة مع @BaarxXxbot للبحث عن: {query}")
+        
+        # إرسال رسالة للبوت
+        await app.send_message("@BaarxXxbot", query)
+        
+        # الانتظار
+        await asyncio.sleep(5)
+        
+        # الحصول على آخر رسائل البوت
+        messages = []
+        async for message in app.get_chat_history("@BaarxXxbot", limit=10):
+            if message.from_user and message.from_user.username == "BaarxXxbot":
+                messages.append(message)
+                if len(messages) >= 5:
+                    break
+        
+        # البحث عن المقطع الصوتي
+        for msg in messages:
+            if msg.audio or msg.voice:
+                print(f"✅ وجدت مقطع صوتي من @BaarxXxbot: {msg.id}")
+                
+                audio_file = await msg.download()
+                
+                if msg.audio:
+                    title = msg.audio.title or query
+                    duration = msg.audio.duration
+                else:
+                    title = query
+                    duration = msg.voice.duration
+                
+                return audio_file, title, duration
+        
+        return None, None, None
+        
+    except Exception as e:
+        print(f"❌ خطأ في try_baar_bot: {str(e)}")
+        return None, None, None
 
 @app.on_message(command(["شغلنا", "GG", "شغل", "تشغيل"]))
 async def _aPlay(_, message: Message):
-    chat_id = message.chat.id
-    requester_id = message.from_user.id if message.from_user else "1121532100"
-    requester_name = message.from_user.first_name if message.from_user else None
+    global global_m, global_chat_id, global_requester_id, global_requester_name
+    
+    global_chat_id = message.chat.id
+    global_requester_id = message.from_user.id if message.from_user else "1121532100"
+    global_requester_name = message.from_user.first_name if message.from_user else None
     
     # الحالة 1: رد على مقطع صوتي (الكود الأصلي)
     if message.reply_to_message and (message.reply_to_message.audio or message.reply_to_message.voice):
-        m = await message.reply_text("⦗ جارٍ التنفيذ ... ⦘")
+        global_m = await message.reply_text("⦗ جارٍ التنفيذ ... ⦘")
         
         # ⭐ التحميل المباشر من الرد
         audio_file = await message.reply_to_message.download()
@@ -45,30 +195,26 @@ async def _aPlay(_, message: Message):
     # الحالة 2: بحث عن أغنية
     elif len(message.command) > 1:
         query = " ".join(message.command[1:])
-        m = await message.reply_text("⦗ انتضر قليلاً ... ⦘")
+        global_m = await message.reply_text("⦗ انتضر قليلاً ... ⦘")
         
         try:
-            # 1. الحصول على audio_response من البوت
-            audio_response = await get_audio_response_from_bot(query)
+            # 1. محاولة مع @W60yBot أولاً
+            audio_file, title, duration = await get_audio_response_from_bot(query)
             
-            if not audio_response:
-                await m.edit("⦗ لم يتم العثور على نتيجة ⦘")
+            # 2. إذا فشل، نجرب @BaarxXxbot
+            if not audio_file:
+                audio_file, title, duration = await try_baar_bot(query)
+            
+            if not audio_file:
+                await global_m.edit("⦗ لم يتم العثور على نتيجة ⦘")
                 return
             
-            m = await m.edit("⦗ جارٍ التنفيذ ... ⦘")
+            await global_m.edit("⦗ جارٍ التنفيذ ... ⦘")
             
-            # 2. ⭐⭐ هنا نفس هيكل التحميل بالضبط! ⭐⭐
-            audio_file = await audio_response.download()
-            
-            # 3. ⭐⭐ نفس استخراج المعلومات! ⭐⭐
-            if audio_response.audio:
-                title = audio_response.audio.title if audio_response.audio else query
-                duration = audio_response.audio.duration if audio_response.audio else 0
-            elif audio_response.voice:
+            # 3. التأكد من وجود القيم
+            if not title:
                 title = query
-                duration = audio_response.voice.duration if audio_response.voice else 0
-            else:
-                title = query
+            if not duration:
                 duration = 0
                 
             link = f"https://t.me/{message.from_user.username}" if message.from_user else "طلب مباشر"
@@ -77,95 +223,11 @@ async def _aPlay(_, message: Message):
             await process_audio(title, duration, audio_file, link)
             
         except Exception as e:
-            await m.edit(f"<code>Error: {e}</code>")
-
-async def get_audio_response_from_bot(query: str):
-    """التنزيل من البوت @W60yBot"""
-    try:
-        print(f"🔍 محاولة مع @W60yBot للبحث عن: {query}")
-        
-        # 1. الانضمام للقناة أولاً
-        try:
-            await app.join_chat("@B_a_r")
-            await asyncio.sleep(1)
-        except:
-            pass
-        
-        # 2. إرسال رسالة للبوت مباشرة
-        await app.send_message("@W60yBot", f"يوت {query}")
-        
-        # 3. الانتظار قليلاً
-        await asyncio.sleep(3)
-        
-        # 4. الحصول على آخر رسائل البوت
-        messages = []
-        async for message in app.get_chat_history("@W60yBot", limit=10):
-            if message.from_user and message.from_user.username == "W60yBot":
-                messages.append(message)
-        
-        # 5. البحث عن المقطع الصوتي
-        for msg in messages:
-            if msg.audio or msg.voice:
-                print(f"✅ وجدت مقطع صوتي: {msg.id}")
-                
-                # تحميل المقطع
-                audio_file = await msg.download()
-                
-                # استخراج المعلومات
-                if msg.audio:
-                    title = msg.audio.title or query
-                    duration = msg.audio.duration
-                else:
-                    title = query
-                    duration = msg.voice.duration
-                
-                return audio_file, title, duration
-        
-        return None, None, None
-        
-    except Exception as e:
-        print(f"❌ خطأ في download_from_W60yBot: {str(e)}")
-        return None, None, None
-
-async def process_audio(title, duration, audio_file, link):
-    """⭐ نفس دالة المعالجة الأصلية بالضبط!"""
-    # ... (نفس الكود الأصلي هنا تماماً)
+            await global_m.edit(f"<code>Error: {e}</code>")
+            print(f"خطأ في _aPlay: {e}")
     
-    # التحقق من المدة
-    if duration > config.MAX_DURATION_MINUTES * 60:
-        await m.edit(f"⦗ اعتذر ولكن المدة الاقصى للتشغيل هي {config.MAX_DURATION_MINUTES} دقيقة ⦘")
-        if audio_file:
-            await delete_file(audio_file)
-        return
-        
-    queue_length = get_queue_length(chat_id)
-    if queue_length >= MAX_QUEUE_SIZE:
-        await m.edit(f"⦗ قائمة الانتظار ممتلئة ⦘")
-        if audio_file:
-            await delete_file(audio_file)
-        return
-
-    queue_num = add_to_queue(chat_id, title, duration, audio_file, link, requester_name, requester_id, False)
-    
-    if queue_num == 1:
-        Status, Text = await userbot.playAudio(chat_id, audio_file)
-
-        if not Status:
-            await m.edit(Text)
-            QUEUE[chat_id].popleft()
-            return
-        
-        await start_play_time(chat_id)
-        await send_song_info(chat_id, {
-            'title': title,
-            'duration': duration,
-            'link': link,
-            'requester_name': requester_name,
-            'requester_id': requester_id
-        })
-        await m.delete()
     else:
-        await m.edit(f"- بالرقم التالي #{queue_num} \n\n- تم اضافتها الى قائمة الانتظار \n- بطلب من : [{requester_name}](tg://user?id={requester_id})")
+        await message.reply_text("⦗ اكتب اسم الأغنية بعد الأمر ⦘")
         
 @app.on_message(command(["قائمة التشغيل", "الطابور", "قائمة الانتضار", "القائمة"]))
 async def _playlist(_, message):
