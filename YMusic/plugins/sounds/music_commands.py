@@ -8,6 +8,7 @@ from YMusic.plugins.sounds.current import start_play_time, stop_play_time
 from YMusic.misc import SUDOERS
 from YMusic.filters import command
 from pyrogram import filters
+from pyrogram.types import Message
 from config import DEV_CHANNEL
 from collections import defaultdict
 import time
